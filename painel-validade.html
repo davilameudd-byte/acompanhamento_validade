@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Painel de Validades — HTML</title>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- SheetJS -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    :root{
+      --primary: 217 91% 60%;
+      --success: 142 71% 45%;
+      --warning: 38 92% 50%;
+      --destructive: 0 84% 60%;
+    }
+    .blue-gradient-bg{
+      background: radial-gradient(1200px 600px at 10% -10%, #e0f2fe 0%, transparent 60%),
+                  radial-gradient(1200px 600px at 110% 10%, #dbeafe 0%, transparent 60%),
+                  #f8fafc;
+    }
+    .metric-card, .chart-container, .dashboard-header{
+      background:white;
+      border:1px solid rgb(226 232 240);
+      border-radius: 1rem;
+      box-shadow: 0 10px 30px rgba(2,6,23,.06);
+    }
+    .status-badge-valid{ background: hsl(var(--success)/.12); color: hsl(var(--success)); padding:.15rem .5rem; border-radius:.5rem; font-size:.75rem; font-weight:600 }
+    .status-badge-expiring{ background: hsl(var(--warning)/.12); color: hsl(var(--warning)); padding:.15rem .5rem; border-radius:.5rem; font-size:.75rem; font-weight:600 }
+    .status-badge-expired{ background: hsl(var(--destructive)/.12); color: hsl(var(--destructive)); padding:.15rem .5rem; border-radius:.5rem; font-size:.75rem; font-weight:600 }
+  </style>
+</head>
+
+<body class="blue-gradient-bg min-h-screen p-4 md:p-6">
+  <div class="max-w-7xl mx-auto space-y-6">
+
+    <!-- HEADER -->
+    <div class="dashboard-header flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 p-6 rounded-2xl mb-6">
+      <div>
+        <h1 class="text-4xl font-bold text-slate-800">Painel de Validades</h1>
+        <p class="text-slate-700 text-lg font-medium">Acompanhamento inteligente de materiais e medicamentos</p>
+      </div>
+      <div class="w-full lg:w-auto">
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          <select id="selectSecao" class="border rounded-md p-2 text-slate-700">
+            <option value="all">Todas as seções</option>
+          </select>
+          <select id="selectDias" class="border rounded-md p-2 text-slate-700">
+            <option value="all">Todos os prazos</option>
+            <option value="30">30 dias a vencer</option>
+            <option value="60">60 dias a vencer</option>
+            <option value="90">90 dias a vencer</option>
+            <option value="180">180 dias a vencer</option>
+          </select>
+          <input id="inputSearch" type="text" placeholder="Buscar produto ou código..." class="border rounded-md p-2 text-slate-700" />
+        </div>
+      </div>
+    </div>
+
+    <!-- MÉTRICAS -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+      <div id="cardTotal" class="metric-card cursor-pointer hover:scale-105 transition-transform p-4">
+        <div class="flex justify-between"><span class="font-medium text-blue-600">Total de Itens</span><span>📦</span></div>
+        <div class="text-3xl font-bold" id="metricTotal">0</div>
+        <p class="text-xs text-slate-500">produtos em estoque</p>
+      </div>
+      <div id="cardExpired" class="metric-card cursor-pointer hover:scale-105 transition-transform p-4">
+        <div class="flex justify-between"><span class="font-medium text-red-600">Itens Vencidos</span><span>⚠️</span></div>
+        <div class="text-3xl font-bold text-red-600" id="metricExpired">0</div>
+        <p class="text-xs text-slate-500">requer ação imediata</p>
+      </div>
+      <div id="cardExpiring" class="metric-card cursor-pointer hover:scale-105 transition-transform p-4">
+        <div class="flex justify-between"><span class="font-medium text-yellow-600">Vencendo em 30 dias</span><span>📅</span></div>
+        <div class="text-3xl font-bold text-yellow-600" id="metricExpiring">0</div>
+        <p class="text-xs text-slate-500">atenção necessária</p>
+      </div>
+    </div>
+
+    <div id="metricDetails" class="metric-card hidden">
+      <div class="p-4 border-b font-semibold" id="metricDetailsTitle"></div>
+      <div class="p-4 space-y-3 max-h-96 overflow-y-auto" id="metricDetailsBody"></div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div class="metric-card p-4"><p class="text-sm font-medium text-red-600">Valor Vencidos</p><div id="metricExpiredValue" class="text-xl font-bold text-red-600">R$ 0,00</div></div>
+      <div class="metric-card p-4"><p class="text-sm font-medium text-yellow-600">Valor A Vencer</p><div id="metricExpiringValue" class="text-xl font-bold text-yellow-600">R$ 0,00</div></div>
+      <div class="metric-card p-4"><p class="text-sm font-medium text-green-600">Valor Total</p><div id="metricTotalValue" class="text-xl font-bold text-green-600">R$ 0,00</div></div>
+    </div>
+
+    <!-- GRÁFICOS -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="chart-container p-4"><p class="font-semibold mb-2">📊 Setores com Maior Risco de Vencimento</p><canvas id="barRisco"></canvas></div>
+      <div class="chart-container p-4"><p class="font-semibold mb-2">📈 Tendência de Vencimentos</p><canvas id="lineTrend"></canvas></div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+      <div class="chart-container p-4"><p class="font-semibold mb-2">Distribuição por Setor</p><canvas id="pieSetor"></canvas></div>
+      <div class="chart-container lg:col-span-2 p-4"><p class="font-semibold mb-3">⚠️ Itens com Prioridade de Atenção</p><div id="urgentList" class="space-y-3"></div></div>
+    </div>
+
+    <!-- UPLOAD EXCEL -->
+    <div class="chart-container p-6 mt-8 text-center">
+      <h2 class="text-lg font-semibold mb-3">Importar Dados do Excel</h2>
+      <div id="dropZone" class="border-2 border-dashed border-slate-300 rounded-xl p-6 bg-white cursor-pointer">
+        <p class="text-slate-700">Arraste o arquivo Excel aqui ou clique abaixo:</p>
+        <button id="btnExcel" class="mt-3 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">Selecionar arquivo</button>
+        <input id="inputExcel" type="file" accept=".xlsx" class="hidden" />
+        <p id="fileName" class="text-xs text-slate-500 mt-2"></p>
+      </div>
+      <p class="text-xs text-slate-500 mt-3">Formato esperado: Seção, Código, Produto, Embalagem, Fabricante, Lote, Data validade, Valor Unitário, Quantidade, Total</p>
+    </div>
+
+    <!-- TABELA -->
+    <div class="chart-container p-4 mt-6">
+      <p class="font-semibold mb-3">Tabela Detalhada de Produtos</p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead><tr class="border-b"><th class="p-2 text-left">Código</th><th class="p-2 text-left">Produto</th><th class="p-2 text-left">Seção</th><th class="p-2 text-left">Fabricante</th><th class="p-2 text-left">Lote</th><th class="p-2 text-left">Validade</th><th class="p-2 text-left">Qtd</th><th class="p-2 text-left">Total</th><th class="p-2 text-left">Status</th></tr></thead>
+          <tbody id="tbodyProdutos"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+<script>
+const BRL = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
+const allowedSections=[
+ "ALMOXARIFADO - VIVA RIO","CAF - VIVA RIO","SATÉLITE CTQ - VIVA RIO",
+ "SATÉLITE CTI - VIVA RIO","SATÉLITE CER CLÍNICO - VIVA RIO"
+];
+let data=[],filtered=[],processed=[];
+let barChart,lineChart,pieChart,selectedMetric=null;
+
+const getDays=(d)=>{const t=new Date();t.setHours(0,0,0,0);return Math.floor((new Date(d)-t)/(1000*60*60*24));};
+const fmt=(d)=>{const dt=new Date(d);return dt.toLocaleDateString('pt-BR');};
+const statusBadge=(s)=>s=='expired'?'<span class="status-badge-expired">Vencido</span>':s=='expiring'?'<span class="status-badge-expiring">Vencendo</span>':'<span class="status-badge-valid">Válido</span>';
+function getStatus(d){const dd=getDays(d);return dd<0?'expired':dd<=30?'expiring':'valid';}
+function recompute(){processed=data.map(x=>({...x,status:getStatus(x.data_validade),daysToExpire:getDays(x.data_validade)}));}
+function filter(){
+ const sec=document.getElementById('selectSecao').value;
+ const dias=document.getElementById('selectDias').value;
+ const term=document.getElementById('inputSearch').value.toLowerCase();
+ filtered=processed.filter(i=>{
+  const ok1=sec==='all'||i.secao===sec;
+  const ok2=i.produto.toLowerCase().includes(term)||i.codigo.toLowerCase().includes(term);
+  let ok3=true;if(dias!=='all'){const n=parseInt(dias);ok3=i.daysToExpire<=n&&i.daysToExpire>=0;}
+  return ok1&&ok2&&ok3;
+ });
+}
+function metrics(){
+ const total=filtered.length;
+ const expired=filtered.filter(x=>x.status==='expired').length;
+ const expiring=filtered.filter(x=>x.status==='expiring').length;
+ const totalV=filtered.reduce((s,x)=>s+x.total,0);
+ const expV=filtered.filter(x=>x.status==='expired').reduce((s,x)=>s+x.total,0);
+ const expiV=filtered.filter(x=>x.status==='expiring').reduce((s,x)=>s+x.total,0);
+ document.getElementById('metricTotal').textContent=total;
+ document.getElementById('metricExpired').textContent=expired;
+ document.getElementById('metricExpiring').textContent=expiring;
+ document.getElementById('metricTotalValue').textContent=BRL.format(totalV);
+ document.getElementById('metricExpiredValue').textContent=BRL.format(expV);
+ document.getElementById('metricExpiringValue').textContent=BRL.format(expiV);
+}
+function renderTable(){
+ const tb=document.getElementById('tbodyProdutos');
+ tb.innerHTML='';
+ const order={expired:0,expiring:1,valid:2};
+ filtered.sort((a,b)=>order[a.status]-order[b.status]);
+ filtered.forEach(i=>{
+  tb.innerHTML+=`<tr class='border-b hover:bg-slate-50'><td class='p-2 text-xs font-mono'>${i.codigo}</td>
+  <td class='p-2 text-xs truncate'>${i.produto}</td><td class='p-2 text-xs'>${i.secao}</td>
+  <td class='p-2 text-xs'>${i.fabricante}</td><td class='p-2 text-xs'>${i.lote}</td>
+  <td class='p-2 text-xs'>${fmt(i.data_validade)}</td><td class='p-2 text-xs'>${i.quantidade}</td>
+  <td class='p-2 text-xs'>${BRL.format(i.total)}</td><td class='p-2'>${statusBadge(i.status)}</td></tr>`;
+ });
+}
+function chartInit(){
+ barChart=new Chart(document.getElementById('barRisco'),{type:'bar',data:{labels:[],datasets:[{data:[],backgroundColor:'hsl(38,92%,50%)'}]},options:{plugins:{legend:{display:false}}}});
+ lineChart=new Chart(document.getElementById('lineTrend'),{type:'line',data:{labels:[],datasets:[{data:[],borderColor:'hsl(217,91%,60%)',tension:.3}]},options:{plugins:{legend:{display:false}}}});
+ pieChart=new Chart(document.getElementById('pieSetor'),{type:'pie',data:{labels:[],datasets:[{data:[]}]},options:{}});
+ updateCharts();
+}
+function updateCharts(){
+ const exp=filtered.filter(x=>x.daysToExpire<=90&&x.daysToExpire>=0);
+ const sec={};exp.forEach(i=>sec[i.secao]=(sec[i.secao]||0)+i.quantidade);
+ barChart.data.labels=Object.keys(sec);barChart.data.datasets[0].data=Object.values(sec);barChart.update();
+ const mes={};filtered.forEach(i=>{const d=new Date(i.data_validade);const key=d.getFullYear()+'-'+(d.getMonth()+1);
+ mes[key]=(mes[key]||0)+i.quantidade;});
+ const s=Object.keys(mes).sort();
+ lineChart.data.labels=s;lineChart.data.datasets[0].data=s.map(k=>mes[k]);lineChart.update();
+ const setor={};filtered.forEach(i=>setor[i.secao]=(setor[i.secao]||0)+i.quantidade);
+ pieChart.data.labels=Object.keys(setor);pieChart.data.datasets[0].data=Object.values(setor);pieChart.update();
+ const urg=filtered.filter(i=>i.daysToExpire<=30).sort((a,b)=>a.daysToExpire-b.daysToExpire).slice(0,5);
+ const ul=document.getElementById('urgentList');ul.innerHTML='';
+ urg.forEach(i=>ul.innerHTML+=`<div class='flex justify-between border p-2 rounded'><div><p class='text-sm font-medium'>${i.codigo} - ${i.produto.slice(0,40)}...</p>
+ <p class='text-xs text-slate-500'>${i.secao} • Lote: ${i.lote} • Qtd: ${i.quantidade}</p></div>
+ <div class='text-right text-xs'><p>${i.daysToExpire<0?Math.abs(i.daysToExpire)+' dias vencido':i.daysToExpire+' dias'}</p>${statusBadge(i.status)}</div></div>`);
+}
+function showMetric(t){
+ selectedMetric=selectedMetric===t?null:t;
+ const box=document.getElementById('metricDetails');
+ if(!selectedMetric){box.classList.add('hidden');return;}
+ const items=filtered.filter(x=>t==='total'?true:x.status===t);
+ document.getElementById('metricDetailsTitle').textContent=t==='expired'?'Itens Vencidos':t==='expiring'?'Itens Vencendo em 30 dias':'Todos os Itens';
+ const body=document.getElementById('metricDetailsBody');body.innerHTML='';
+ items.forEach(i=>body.innerHTML+=`<div class='flex justify-between border p-2 rounded bg-slate-50'>
+ <div><p class='text-sm font-medium'>${i.codigo} - ${i.produto.slice(0,40)}...</p>
+ <p class='text-xs text-slate-500'>${i.secao} • Lote: ${i.lote} • Qtd: ${i.quantidade} • Valor: ${BRL.format(i.total)}</p></div>
+ <div class='text-right text-xs'>${fmt(i.data_validade)}<br>${statusBadge(i.status)}</div></div>`);
+ box.classList.remove('hidden');
+}
+function refreshAll(){filter();metrics();renderTable();updateCharts();if(selectedMetric)showMetric(selectedMetric);}
+
+// normaliza cabeçalhos com acento e espaço
+function normalizeKey(k){
+  return k.toLowerCase()
+    .replace(/[áàãâä]/g,'a')
+    .replace(/[éèêë]/g,'e')
+    .replace(/[íìîï]/g,'i')
+    .replace(/[óòõôö]/g,'o')
+    .replace(/[úùûü]/g,'u')
+    .replace(/[ç]/g,'c')
+    .replace(/\s+/g,'_')
+    .trim();
+}
+
+// upload excel
+function excelInit(){
+ const drop=document.getElementById('dropZone');const input=document.getElementById('inputExcel');
+ const btn=document.getElementById('btnExcel');const name=document.getElementById('fileName');
+ btn.onclick=()=>input.click();
+ input.onchange=e=>handleExcel(e.target.files[0]);
+ ["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("bg-blue-50","border-blue-500");}));
+ ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("bg-blue-50","border-blue-500");}));
+ drop.addEventListener('drop',e=>handleExcel(e.dataTransfer.files[0]));
+
+ function handleExcel(file){
+  if(!file)return;
+  name.textContent='📎 '+file.name;
+  const reader=new FileReader();
+  reader.onload=e=>{
+   const wb=XLSX.read(e.target.result,{type:'binary'});
+   const ws=wb.Sheets[wb.SheetNames[0]];
+   const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+   data=rows.map(r=>{
+     const obj={};
+     for(const key in r){ obj[normalizeKey(key)] = r[key]; }
+     return {
+       secao: obj.secao||'',
+       codigo: obj.codigo||'',
+       produto: obj.produto||'',
+       embalagem: obj.embalagem||'',
+       fabricante: obj.fabricante||'',
+       lote: obj.lote||'',
+       data_validade: obj.data_validade || obj.data || obj.validade || '',
+       valor_unitario: +obj.valor_unitario || 0,
+       quantidade: +obj.quantidade || 0,
+       total: +obj.total || 0
+     };
+   });
+   recompute();refreshAll();
+  };
+  reader.readAsBinaryString(file);
+ }
+}
+
+function init(){
+ allowedSections.forEach(s=>document.getElementById('selectSecao').innerHTML+=`<option>${s}</option>`);
+ recompute();filter();metrics();chartInit();renderTable();excelInit();
+ document.getElementById('selectSecao').onchange=refreshAll;
+ document.getElementById('selectDias').onchange=refreshAll;
+ document.getElementById('inputSearch').oninput=refreshAll;
+ document.getElementById('cardTotal').onclick=()=>showMetric('total');
+ document.getElementById('cardExpired').onclick=()=>showMetric('expired');
+ document.getElementById('cardExpiring').onclick=()=>showMetric('expiring');
+}
+init();
+</script>
+</body>
+</html>
